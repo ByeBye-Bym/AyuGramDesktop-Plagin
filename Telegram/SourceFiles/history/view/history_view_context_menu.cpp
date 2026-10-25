@@ -124,6 +124,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 // AyuGram includes
 #include "ayu/ayu_settings.h"
 #include "ayu/features/forward/ayu_forward.h"
+#include "ayu/features/plugins/plugins_manager.h"
 #include "ayu/ui/context_menu/context_menu.h"
 
 
@@ -1415,6 +1416,7 @@ void AddMessageActions(
 		AyuUi::AddUserMessagesAction(menu, request.item);
 		AyuUi::AddRepeatMessageAction(menu, request.item, context);
 		AyuUi::AddMessageDetailsAction(menu, request.item);
+		AyuPlugins::fillMessageMenu(menu, request.item);
 	}
 
 	AddPostLinkAction(menu, request);

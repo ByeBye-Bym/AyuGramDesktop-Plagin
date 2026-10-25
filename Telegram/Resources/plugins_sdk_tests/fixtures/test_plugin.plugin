@@ -1,0 +1,48 @@
+from typing import Any, List
+
+from base_plugin import BasePlugin, HookResult, HookStrategy, MenuItemData, MenuItemType
+from client_utils import edit_message_local
+from ui.bulletin import BulletinHelper
+from ui.settings import Header, Input, Selector, Switch, Text
+
+__id__ = "ayu_test"
+__name__ = "AyuGram Test Plugin"
+__description__ = "Checks the plugin engine: **.hello** command, local edit in message menu, settings."
+__author__ = "AyuGram Desktop Plagin"
+__version__ = "1.0.0"
+
+
+class TestPlugin(BasePlugin):
+    def on_plugin_load(self):
+        self.add_on_send_message_hook()
+        self.add_menu_item(MenuItemData(
+            menu_type=MenuItemType.MESSAGE_CONTEXT_MENU,
+            text="Reverse text (local)",
+            on_click=self.reverse,
+        ))
+        self.logger.info("Test plugin loaded")
+
+    def create_settings(self) -> List[Any]:
+        return [
+            Header(text="Greeting"),
+            Switch(key="enabled", text="Replace .hello", default=True),
+            Input(key="template", text="Template", default="Hello, {name}!"),
+            Selector(key="case", text="Case", default=0, items=["As is", "UPPER", "lower"]),
+            Text(text="Show test toast", on_click=lambda view: BulletinHelper.show_info("Plugins work!")),
+        ]
+
+    def reverse(self, context):
+        message = context["message"]
+        edit_message_local(message, message.messageOwner.message[::-1])
+
+    def on_send_message_hook(self, account: int, params: Any) -> HookResult:
+        text = getattr(params, "message", None)
+        if not isinstance(text, str) or not text.startswith(".hello"):
+            return HookResult()
+        if not self.get_setting("enabled", True):
+            return HookResult()
+        name = text[len(".hello"):].strip() or "world"
+        result = self.get_setting("template", "Hello, {name}!").format(name=name)
+        case = self.get_setting("case", 0)
+        params.message = result.upper() if case == 1 else result.lower() if case == 2 else result
+        return HookResult(strategy=HookStrategy.MODIFY, params=params)

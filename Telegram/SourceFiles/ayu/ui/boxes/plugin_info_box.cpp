@@ -8,6 +8,8 @@
 
 #include "apiwrap.h"
 #include "ayu/ayu_url_handlers.h"
+#include "ayu/features/plugins/plugins_manager.h"
+#include "ayu/ui/settings/settings_plugins.h"
 #include "core/file_utilities.h"
 #include "core/ui_integration.h"
 #include "data/data_document.h"
@@ -415,18 +417,22 @@ void FillPluginInfoBox(
 
 	Ui::AddSkip(box->verticalLayout());
 
-	box->verticalLayout()->add(
-		object_ptr<Ui::FlatLabel>(
-			box->verticalLayout(),
-			tr::ayu_PluginsNotAvailable(),
-			st::boxDividerLabel),
-		st::boxRowPadding);
+	if (!AyuPlugins::available()) {
+		box->verticalLayout()->add(
+			object_ptr<Ui::FlatLabel>(
+				box->verticalLayout(),
+				tr::ayu_PluginsRuntimeMissing(),
+				st::boxDividerLabel),
+			st::boxRowPadding);
+		Ui::AddSkip(box->verticalLayout());
+	}
 
-	Ui::AddSkip(box->verticalLayout());
-
-	const auto closeButton = box->addButton(
-		tr::lng_close(),
-		[=] { box->closeBox(); });
+	const auto closeButton = AyuPlugins::available()
+		? box->addButton(tr::ayu_PluginInstallButton(), [=] {
+			Settings::InstallPluginWithToast(controller, pluginPath);
+			box->closeBox();
+		})
+		: box->addButton(tr::lng_close(), [=] { box->closeBox(); });
 	const auto buttonWidth = box->width()
 		- rect::m::sum::h(st::starrefFooterBox.buttonPadding);
 	closeButton->widthValue() | rpl::filter([=]

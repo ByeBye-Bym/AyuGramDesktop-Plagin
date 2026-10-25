@@ -163,6 +163,8 @@ set(ayugram_files
         ayu/ui/settings/settings_main.h
         ayu/ui/settings/settings_other.cpp
         ayu/ui/settings/settings_other.h
+        ayu/ui/settings/settings_plugins.cpp
+        ayu/ui/settings/settings_plugins.h
         ayu/ui/settings/filters/settings_filters_list.cpp
         ayu/ui/settings/filters/settings_filters_list.h
         ayu/ui/settings/filters/per_dialog_filter.cpp
@@ -229,6 +231,8 @@ set(ayugram_files
         ayu/features/forward/ayu_forward_rich.h
         ayu/features/forward/ayu_sync.cpp
         ayu/features/forward/ayu_sync.h
+        ayu/features/plugins/plugins_manager.cpp
+        ayu/features/plugins/plugins_manager.h
         ayu/features/translator/ayu_translator.cpp
         ayu/features/translator/ayu_translator.h
         ayu/features/translator/ayu_translate_provider.cpp
@@ -2660,6 +2664,28 @@ if (MSVC)
         /DELAYLOAD:wtsapi32.dll
         /DELAYLOAD:propsys.dll
     )
+
+    # AyuGram plugins: python311.dll is loaded from the python/ folder at runtime.
+    get_filename_component(ayu_python_loc "../../Libraries/win64/python311" REALPATH)
+    target_include_directories(Telegram PRIVATE ${ayu_python_loc}/include)
+    target_link_libraries(Telegram PRIVATE ${ayu_python_loc}/libs/python311.lib)
+    target_link_options(Telegram PRIVATE /DELAYLOAD:python311.dll)
+    add_custom_command(TARGET Telegram POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:Telegram>/python
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${ayu_python_loc}/python311.dll
+            ${ayu_python_loc}/vcruntime140.dll
+            ${ayu_python_loc}/vcruntime140_1.dll
+            ${ayu_python_loc}/LICENSE.txt
+            $<TARGET_FILE_DIR:Telegram>/python
+        COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different
+            ${ayu_python_loc}/Lib $<TARGET_FILE_DIR:Telegram>/python/Lib
+        COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different
+            ${ayu_python_loc}/DLLs $<TARGET_FILE_DIR:Telegram>/python/DLLs
+        COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different
+            ${res_loc}/plugins_sdk $<TARGET_FILE_DIR:Telegram>/python/sdk
+    )
+
     if (QT_VERSION GREATER 6)
         if (NOT build_winarm)
             target_link_options(Telegram PRIVATE

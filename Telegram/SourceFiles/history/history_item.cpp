@@ -4395,6 +4395,13 @@ void HistoryItem::updateDate(TimeId newDate) {
 	}
 }
 
+void HistoryItem::setLocalDate(TimeId date) {
+	if (_date != date) {
+		_date = date;
+		_history->owner().requestItemViewRefresh(this);
+	}
+}
+
 bool HistoryItem::canUpdateDate() const {
 	return isScheduled();
 }
