@@ -40,6 +40,10 @@ const std::map<QByteArray, QString> pluginStringsRu = {
 	{"ayu_PluginInstallFailed", "Не удалось загрузить плагин: {error}"},
 	{"ayu_PluginLoadError", "Ошибка: {error}"},
 	{"ayu_PluginNoSettings", "У этого плагина нет настроек."},
+	{"ayu_PluginsLog", "Журнал ошибок"},
+	{"ayu_PluginsLogEmpty", "Журнал пуст."},
+	{"ayu_PluginsLogCopy", "Скопировать"},
+	{"ayu_PluginsLogCopied", "Журнал скопирован, вставьте его в сообщение."},
 };
 
 constexpr auto postfixes = {

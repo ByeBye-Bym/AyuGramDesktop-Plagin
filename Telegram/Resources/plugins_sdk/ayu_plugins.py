@@ -7,10 +7,12 @@ import importlib.machinery
 import importlib.util
 import json
 import logging
+import logging.handlers
 import os
 import shutil
 import sys
 import threading
+import time
 import traceback
 
 import _ayugram
@@ -200,13 +202,18 @@ def h_init(plugins_dir, data_dir, app_version):
     _state["main_thread"] = threading.get_ident()
     os.makedirs(plugins_dir, exist_ok=True)
     os.makedirs(data_dir, exist_ok=True)
+    handler = logging.handlers.RotatingFileHandler(
+        os.path.join(data_dir, "plugins.log"),
+        maxBytes=1024 * 1024, backupCount=1, encoding="utf-8")
     logging.basicConfig(
-        filename=os.path.join(data_dir, "plugins.log"),
+        handlers=[handler],
         level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-        encoding="utf-8")
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     sys.stdout = _LogWriter(logging.INFO)
     sys.stderr = _LogWriter(logging.ERROR)
+    import platform
+    log.info("Ayuplagin %s, Python %s, %s %s",
+             app_version, platform.python_version(), platform.platform(), platform.machine())
     _scan()
     log.info("Loaded %d plugin(s)", len(_active()))
 
@@ -438,6 +445,7 @@ def _hooks_filter():
 def _run_hooks(name, call, obj, field):
     """Runs matching plugins by priority, returns (cancelled, changed, obj)."""
     from base_plugin import HookStrategy
+    _state["hook_name"] = name
     hooks = []
     for instance in _active():
         for pattern, (priority, substring) in instance._ayu_request_hooks.items():
@@ -508,7 +516,10 @@ def h_response(account, request_id, data):
 def h_updates(account, data):
     import tl_schema
     schema = tl_schema.schema()
-    updates = schema.decode(base64.b64decode(data))
+    raw = base64.b64decode(data)
+    if int.from_bytes(raw[:4], "little") not in schema.by_id:
+        return {}  # MTProto service messages like new_session_created come here too
+    updates = schema.decode(raw)
     name = type(updates).__name__
     cancelled, changed, updates = _run_hooks(
         name,
@@ -542,7 +553,12 @@ def h_updates(account, data):
     return {"data": _b64(schema.encode(updates))} if changed else {}
 
 
+SLOW_CALL_MS = 50
+
+
 def handle(method, args_json):
+    started = time.perf_counter()
+    _state["hook_name"] = ""
     try:
         args = json.loads(args_json) if args_json else {}
         result = globals()["h_" + method](**args)
@@ -557,3 +573,8 @@ def handle(method, args_json):
     except Exception as e:
         log.exception("handle(%s) failed", method)
         return json.dumps({"ok": False, "error": f"{type(e).__name__}: {e}"})
+    finally:
+        elapsed = (time.perf_counter() - started) * 1000
+        if elapsed > SLOW_CALL_MS and method != "init":
+            log.warning("Slow %s %s: %.0f ms, the app was frozen meanwhile",
+                        method, _state["hook_name"], elapsed)

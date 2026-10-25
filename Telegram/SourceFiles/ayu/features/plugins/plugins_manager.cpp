@@ -54,6 +54,8 @@
 namespace AyuPlugins {
 namespace {
 
+constexpr auto kMaxHookedRequests = 1000;
+
 #ifdef Q_OS_WIN
 PyObject *Loader = nullptr;
 #endif // Q_OS_WIN
@@ -439,6 +441,9 @@ void init() {
 		return;
 	}
 	Available = true;
+	QObject::connect(qApp, &QCoreApplication::aboutToQuit, [] {
+		Call(u"shutdown"_q);
+	});
 	Call(u"init"_q, {
 		{ u"plugins_dir"_q, QDir::toNativeSeparators(pluginsPath()) },
 		{ u"data_dir"_q, QDir::toNativeSeparators(DataPath()) },
@@ -452,6 +457,10 @@ bool available() {
 
 QString pluginsPath() {
 	return cWorkingDir() + u"tdata/ayu/plugins/"_q;
+}
+
+QString logPath() {
+	return DataPath() + u"plugins.log"_q;
 }
 
 std::vector<PluginInfo> list() {
@@ -618,6 +627,9 @@ bool onRequest(
 	if (result[u"cancel"_q].toBool()) {
 		return false;
 	}
+	if (HookedRequests.size() >= kMaxHookedRequests) {
+		HookedRequests.erase(HookedRequests.begin());
+	}
 	HookedRequests.emplace(requestId);
 	const auto body = DecodeBuffer(result[u"data"_q]);
 	if (!body.isEmpty()) {
@@ -632,7 +644,9 @@ bool onRequest(
 std::optional<mtpBuffer> onResponse(
 		not_null<MTP::Instance*> instance,
 		const MTP::Response &response) {
-	if (!HookedRequests.remove(response.requestId)) {
+	if (HookedRequests.empty()
+		|| QThread::currentThread() != qApp->thread()
+		|| !HookedRequests.remove(response.requestId)) {
 		return std::nullopt;
 	}
 	const auto account = AccountIndex(instance);

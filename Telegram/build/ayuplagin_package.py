@@ -8,6 +8,9 @@ import zipfile
 
 # Public test keys from the build docs, Telegram rejects apps shipped with them.
 TEST_HASHES = [b"b18441a1ff607e10a989891a5462e627", b"344583e45741c457fe1862106095a5eb"]
+# The embedded runtime runs isolated without site, these are never imported.
+SKIP_DIRS = {"__pycache__", "test", "tests", "site-packages", "ensurepip",
+             "idlelib", "tkinter", "turtledemo", "lib2to3"}
 
 build, version, out_dir = sys.argv[1:4]
 exe = os.path.join(build, "Ayuplagin.exe")
@@ -28,7 +31,7 @@ with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as z:
     for name in ("LICENSE", "LEGAL"):
         z.write(os.path.join(root, name), "Ayuplagin/" + name)
     for folder, dirs, files in os.walk(os.path.join(build, "python")):
-        dirs[:] = [d for d in dirs if d not in ("__pycache__", "test", "tests")]
+        dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
         for name in files:
             if name.endswith((".pyc", ".pdb")):
                 continue

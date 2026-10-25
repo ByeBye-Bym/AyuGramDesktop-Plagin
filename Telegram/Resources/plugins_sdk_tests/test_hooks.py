@@ -25,6 +25,10 @@ assert schema.encode(back) == raw
 back.silent = False
 assert schema.decode(schema.encode(back)).silent is False
 assert schema.decode(schema.encode([1, 2], "Vector<long>"), "Vector<long>") == [1, 2]
+# Optional fields that are present with a falsy value must survive.
+zero = schema.decode(schema.encode(schema.new("TL_messages_getDialogs", folder_id=0, offset_peer=schema.new("TL_inputPeerEmpty"), offset_date=0, offset_id=0, limit=0, hash=0)))
+assert zero.folder_id == 0
+
 err_raw = bytes.fromhex("19ca4421") + (400).to_bytes(4, "little") + b"\x03ABC"
 err = schema.decode(err_raw)
 assert isinstance(err, tl_schema.TL_error) and err.code == 400 and err.text == "ABC"
@@ -87,6 +91,9 @@ updates = schema.new("TL_updates", updates=[typing, other], users=[], chats=[], 
 out = call("updates", account=0, data=b64(schema.encode(updates)))["result"]
 kept = schema.decode(base64.b64decode(out["data"])).updates
 assert [type(u).__name__ for u in kept] == ["TL_updateDeleteMessages"]
+
+new_session_created = bytes.fromhex("0809c29e") + bytes(24)
+assert call("updates", account=0, data=b64(new_session_created))["result"] == {}
 
 short = schema.new("TL_updateShort", update=typing, date=0)
 assert call("updates", account=0, data=b64(schema.encode(short)))["result"] == {"drop": True}

@@ -46,6 +46,7 @@ struct PluginInfo {
 void init();
 [[nodiscard]] bool available();
 [[nodiscard]] QString pluginsPath();
+[[nodiscard]] QString logPath();
 
 [[nodiscard]] std::vector<PluginInfo> list();
 [[nodiscard]] rpl::producer<> changes();

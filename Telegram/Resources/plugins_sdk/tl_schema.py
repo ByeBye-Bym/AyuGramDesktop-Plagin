@@ -174,7 +174,8 @@ class Schema:
                 if ptype == "#":
                     flags[field] = getattr(value, "_" + field, 0)
                 elif cond:
-                    present = getattr(value, field, None) not in (None, False)
+                    field_value = getattr(value, field, None)
+                    present = bool(field_value) if ptype == "true" else field_value is not None
                     mask = 1 << cond[1]
                     flags[cond[0]] = (flags[cond[0]] | mask) if present else (flags[cond[0]] & ~mask)
             for field, ptype, cond in c.params:

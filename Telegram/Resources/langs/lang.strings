@@ -9188,6 +9188,10 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "ayu_PluginInstallFailed" = "Plugin failed to load: {error}";
 "ayu_PluginLoadError" = "Error: {error}";
 "ayu_PluginNoSettings" = "This plugin has no settings.";
+"ayu_PluginsLog" = "Error log";
+"ayu_PluginsLogEmpty" = "The log is empty.";
+"ayu_PluginsLogCopy" = "Copy";
+"ayu_PluginsLogCopied" = "Log copied, paste it into your message.";
 "ayu_SessionTerminated" = "Session **{item}** was terminated. You may still browse cached messages.";
 "ayu_InvalidConnectionLayerNote" = "You should re-login due to an error during the update.";
 "ayu_LocalPremiumNotice" = "You're using **local** Telegram Premium.\nIt **won't** give you any benefits.\n**Enjoy the star near your nickname!**";

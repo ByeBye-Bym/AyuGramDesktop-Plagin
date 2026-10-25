@@ -20,15 +20,52 @@
 #include "ui/layers/generic_box.h"
 #include "ui/widgets/buttons.h"
 #include "ui/widgets/fields/input_field.h"
+#include "ui/widgets/labels.h"
 #include "ui/wrap/vertical_layout.h"
 #include "window/window_session_controller.h"
 
 #include <QtCore/QJsonArray>
 #include <QtCore/QJsonObject>
+#include <QtGui/QClipboard>
 #include <QtGui/QDesktopServices>
+#include <QtGui/QGuiApplication>
 
 namespace Settings {
 namespace {
+
+constexpr auto kLogTailBytes = 32 * 1024;
+
+[[nodiscard]] QString ReadLogTail() {
+	auto file = QFile(AyuPlugins::logPath());
+	if (!file.open(QIODevice::ReadOnly)) {
+		return QString();
+	}
+	if (file.size() > kLogTailBytes) {
+		file.seek(file.size() - kLogTailBytes);
+		file.readLine();
+	}
+	return QString::fromUtf8(file.readAll()).trimmed();
+}
+
+void PluginsLogBox(not_null<Ui::GenericBox*> box) {
+	box->setTitle(tr::ayu_PluginsLog());
+	box->setWidth(st::boxWideWidth);
+	box->setMaxHeight(st::boxMaxListHeight);
+	const auto text = ReadLogTail();
+	box->addRow(object_ptr<Ui::FlatLabel>(
+		box,
+		text.isEmpty() ? tr::ayu_PluginsLogEmpty(tr::now) : text,
+		st::boxLabel))->setSelectable(true);
+	if (!text.isEmpty()) {
+		box->addButton(tr::ayu_PluginsLogCopy(), [=] {
+			QGuiApplication::clipboard()->setText(text);
+			box->showToast(tr::ayu_PluginsLogCopied(tr::now));
+		});
+	}
+	box->addButton(tr::lng_close(), [=] {
+		box->closeBox();
+	});
+}
 
 void InputSettingBox(
 		not_null<Ui::GenericBox*> box,
@@ -289,6 +326,14 @@ void AyuPluginsSection::setupContent() {
 		QDir().mkpath(AyuPlugins::pluginsPath());
 		QDesktopServices::openUrl(
 			QUrl::fromLocalFile(AyuPlugins::pluginsPath()));
+	});
+	AddButtonWithIcon(
+		content,
+		tr::ayu_PluginsLog(),
+		st::settingsButton,
+		{ &st::menuIconInfo }
+	)->setClickedCallback([=] {
+		window->show(Box(PluginsLogBox));
 	});
 	Ui::AddSkip(content);
 	Ui::AddDividerText(content, tr::ayu_PluginsDescription());
