@@ -2,6 +2,7 @@
 # C++ calls handle(method, args_json) and gets a JSON string back.
 
 import ast
+import base64
 import importlib.machinery
 import importlib.util
 import json
@@ -400,14 +401,158 @@ def _has_message_hooks():
     return any(i._ayu_method_hooks.get("message_bind") for i in _active())
 
 
+# ---- request / update hooks ----
+
+_hook_filter = {"key": None, "requests": [], "updates": False}
+_pending_requests = {}  # request_id -> function combinator, until the response
+
+
+def _hook_matches(name, pattern, substring):
+    return name == pattern or (substring and pattern in name)
+
+
+def _hooks_filter():
+    key = tuple(sorted(
+        (name, substring)
+        for instance in _active()
+        for name, (_, substring) in instance._ayu_request_hooks.items()))
+    if key != _hook_filter["key"]:
+        requests, updates = [], False
+        if key:
+            import tl_schema
+            try:
+                combinators = tl_schema.schema().by_id.values()
+            except OSError:
+                log.exception("api.tl not found, request hooks are disabled")
+                combinators = []
+            for c in combinators:
+                if any(_hook_matches(c.java_name, p, s) for p, s in key):
+                    if c.is_function:
+                        requests.append(c.cid)
+                    else:
+                        updates = True
+        _hook_filter.update(key=key, requests=requests, updates=updates)
+    return _hook_filter
+
+
+def _run_hooks(name, call, obj, field):
+    """Runs matching plugins by priority, returns (cancelled, changed, obj)."""
+    from base_plugin import HookStrategy
+    hooks = []
+    for instance in _active():
+        for pattern, (priority, substring) in instance._ayu_request_hooks.items():
+            if _hook_matches(name, pattern, substring):
+                hooks.append((priority, instance))
+                break
+    changed = False
+    for _, instance in _sorted_by_priority(hooks):
+        try:
+            result = call(instance, obj)
+        except Exception:
+            instance.logger.exception("%s hook failed", name)
+            continue
+        if result is None or result.strategy == HookStrategy.DEFAULT:
+            continue
+        if result.strategy == HookStrategy.CANCEL:
+            return True, changed, obj
+        replacement = getattr(result, field)
+        if replacement is not None:
+            obj = replacement
+        changed = True  # plugins edit the object in place and return MODIFY
+        if result.strategy == HookStrategy.MODIFY_FINAL:
+            break
+    return False, changed, obj
+
+
+def _b64(data):
+    return base64.b64encode(data).decode("ascii")
+
+
+def h_request(account, request_id, data):
+    import tl_schema
+    schema = tl_schema.schema()
+    request = schema.decode(base64.b64decode(data))
+    c = type(request)._combinator
+    cancelled, changed, request = _run_hooks(
+        c.java_name,
+        lambda i, o: i.pre_request_hook(c.java_name, account, o),
+        request,
+        "request")
+    if cancelled:
+        return {"cancel": True}
+    if len(_pending_requests) > 1000:  # requests the app cancelled never get a response
+        _pending_requests.pop(next(iter(_pending_requests)))
+    _pending_requests[request_id] = c
+    return {"data": _b64(schema.encode(request))} if changed else {}
+
+
+def h_response(account, request_id, data):
+    import tl_schema
+    c = _pending_requests.pop(request_id, None)
+    if c is None:
+        return {}
+    schema = tl_schema.schema()
+    response = schema.decode(base64.b64decode(data), c.result)
+    error = response if isinstance(response, tl_schema.TL_error) else None
+    response = None if error else response
+    _, changed, response = _run_hooks(
+        c.java_name,
+        lambda i, o: i.post_request_hook(c.java_name, account, o, error),
+        response,
+        "response")
+    if not changed or response is None:
+        return {}
+    return {"data": _b64(schema.encode(response, c.result))}
+
+
+def h_updates(account, data):
+    import tl_schema
+    schema = tl_schema.schema()
+    updates = schema.decode(base64.b64decode(data))
+    name = type(updates).__name__
+    cancelled, changed, updates = _run_hooks(
+        name,
+        lambda i, o: i.on_updates_hook(name, account, o),
+        updates,
+        "updates")
+    if cancelled:
+        return {"drop": True}
+
+    def run_one(update):
+        update_name = type(update).__name__
+        return _run_hooks(
+            update_name,
+            lambda i, o: i.on_update_hook(update_name, account, o),
+            update,
+            "update")
+
+    if isinstance(getattr(updates, "updates", None), list):
+        kept = []
+        for update in updates.updates:
+            dropped, one_changed, update = run_one(update)
+            changed = changed or dropped or one_changed
+            if not dropped:
+                kept.append(update)
+        updates.updates = kept
+    elif getattr(updates, "update", None) is not None:
+        dropped, one_changed, updates.update = run_one(updates.update)
+        if dropped:
+            return {"drop": True}
+        changed = changed or one_changed
+    return {"data": _b64(schema.encode(updates))} if changed else {}
+
+
 def handle(method, args_json):
     try:
         args = json.loads(args_json) if args_json else {}
         result = globals()["h_" + method](**args)
+        hooks = _hooks_filter()
         return json.dumps({
             "ok": True,
             "result": result,
             "message_hooks": _has_message_hooks(),
+            "request_hooks": hooks["requests"],
+            "update_hooks": hooks["updates"],
         })
     except Exception as e:
         log.exception("handle(%s) failed", method)

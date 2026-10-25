@@ -28,6 +28,10 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "base/network_reachability.h"
 #include "test/test_rpc_retry.h"
 
+// AyuGram includes
+#include "ayu/features/plugins/plugins_manager.h"
+
+
 namespace MTP {
 namespace {
 
@@ -1017,6 +1021,9 @@ void Instance::Private::sendRequest(
 		crl::time msCanWait,
 		bool needsLayer,
 		mtpRequestId afterRequestId) {
+	if (!AyuPlugins::onRequest(_instance, requestId, request)) {
+		return;
+	}
 	const auto session = getSession(shiftedDcId);
 
 	request->requestId = requestId;
@@ -1144,6 +1151,14 @@ bool Instance::Private::hasCallback(mtpRequestId requestId) const {
 }
 
 void Instance::Private::processCallback(const Response &response) {
+	if (auto reply = AyuPlugins::onResponse(_instance, response)) {
+		processCallback({
+			std::move(*reply),
+			response.outerMsgId,
+			response.requestId,
+		});
+		return;
+	}
 	const auto requestId = response.requestId;
 	ResponseHandler handler;
 	{
@@ -1203,6 +1218,16 @@ void Instance::Private::processCallback(const Response &response) {
 }
 
 void Instance::Private::processUpdate(const Response &message) {
+	if (auto reply = AyuPlugins::onUpdates(_instance, message)) {
+		if (!reply->isEmpty() && _updatesHandler) {
+			_updatesHandler({
+				std::move(*reply),
+				message.outerMsgId,
+				message.requestId,
+			});
+		}
+		return;
+	}
 	if (_updatesHandler) {
 		_updatesHandler(message);
 	}

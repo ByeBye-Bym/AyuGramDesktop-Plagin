@@ -18,6 +18,8 @@
 #include "main/main_account.h"
 #include "main/main_domain.h"
 #include "main/main_session.h"
+#include "mtproto/details/mtproto_serialized_request.h"
+#include "mtproto/mtproto_response.h"
 #include "styles/style_layers.h"
 #include "styles/style_menu_icons.h"
 #include "ui/layers/generic_box.h"
@@ -59,6 +61,9 @@ PyObject *Loader = nullptr;
 rpl::event_stream<> Changes;
 bool Available = false;
 bool MessageHooks = false;
+bool UpdateHooks = false;
+base::flat_set<mtpTypeId> RequestHooks;
+base::flat_set<mtpRequestId> HookedRequests;
 base::flat_map<int64, QPointer<Ui::GenericBox>> Dialogs;
 
 [[nodiscard]] QString PythonPath() {
@@ -101,6 +106,32 @@ base::flat_map<int64, QPointer<Ui::GenericBox>> Dialogs;
 		}
 	}
 	return 0;
+}
+
+[[nodiscard]] std::optional<int> AccountIndex(
+		not_null<MTP::Instance*> instance) {
+	if (QThread::currentThread() != qApp->thread()) {
+		return std::nullopt;
+	}
+	for (const auto &[index, account] : Core::App().domain().accounts()) {
+		if (account->sessionExists() && &account->mtp() == instance) {
+			return index;
+		}
+	}
+	return std::nullopt;
+}
+
+[[nodiscard]] QString EncodeBuffer(const mtpPrime *data, int size) {
+	return QString::fromLatin1(QByteArray(
+		reinterpret_cast<const char*>(data),
+		size * sizeof(mtpPrime)).toBase64());
+}
+
+[[nodiscard]] mtpBuffer DecodeBuffer(const QJsonValue &value) {
+	const auto bytes = QByteArray::fromBase64(value.toString().toLatin1());
+	auto result = mtpBuffer(bytes.size() / sizeof(mtpPrime));
+	memcpy(result.data(), bytes.constData(), result.size() * sizeof(mtpPrime));
+	return result;
 }
 
 [[nodiscard]] Main::Session *SessionByIndex(const QJsonValue &index) {
@@ -329,6 +360,11 @@ QJsonObject CallRaw(const QString &method, const QJsonObject &args) {
 	PyGILState_Release(gil);
 	if (result[u"ok"_q].toBool()) {
 		MessageHooks = result[u"message_hooks"_q].toBool();
+		UpdateHooks = result[u"update_hooks"_q].toBool();
+		RequestHooks.clear();
+		for (const auto &id : result[u"request_hooks"_q].toArray()) {
+			RequestHooks.emplace(mtpTypeId(uint32(id.toDouble())));
+		}
 	} else {
 		LOG(("Plugins: %1 failed: %2"
 			).arg(method
@@ -555,6 +591,86 @@ void fillMessageMenu(
 			});
 		}, &st::menuIconCustomize);
 	}
+}
+
+bool onRequest(
+		not_null<MTP::Instance*> instance,
+		mtpRequestId requestId,
+		MTP::details::SerializedRequest &request) {
+	using MTP::details::SerializedRequest;
+	constexpr auto kBody = SerializedRequest::kMessageBodyPosition;
+	if (RequestHooks.empty()
+		|| request->size() <= kBody
+		|| !RequestHooks.contains(mtpTypeId((*request)[kBody]))) {
+		return true;
+	}
+	const auto account = AccountIndex(instance);
+	if (!account) {
+		return true;
+	}
+	const auto result = Call(u"request"_q, {
+		{ u"account"_q, *account },
+		{ u"request_id"_q, requestId },
+		{ u"data"_q, EncodeBuffer(
+			request->constData() + kBody,
+			request->size() - kBody) },
+	}).toObject();
+	if (result[u"cancel"_q].toBool()) {
+		return false;
+	}
+	HookedRequests.emplace(requestId);
+	const auto body = DecodeBuffer(result[u"data"_q]);
+	if (!body.isEmpty()) {
+		auto replaced = SerializedRequest::Prepare(body.size());
+		replaced->append(body);
+		replaced->forceSendInContainer = request->forceSendInContainer;
+		request = std::move(replaced);
+	}
+	return true;
+}
+
+std::optional<mtpBuffer> onResponse(
+		not_null<MTP::Instance*> instance,
+		const MTP::Response &response) {
+	if (!HookedRequests.remove(response.requestId)) {
+		return std::nullopt;
+	}
+	const auto account = AccountIndex(instance);
+	if (!account || response.reply.isEmpty()) {
+		return std::nullopt;
+	}
+	const auto result = Call(u"response"_q, {
+		{ u"account"_q, *account },
+		{ u"request_id"_q, response.requestId },
+		{ u"data"_q, EncodeBuffer(
+			response.reply.constData(),
+			response.reply.size()) },
+	}).toObject();
+	auto reply = DecodeBuffer(result[u"data"_q]);
+	return reply.isEmpty() ? std::nullopt : std::make_optional(reply);
+}
+
+std::optional<mtpBuffer> onUpdates(
+		not_null<MTP::Instance*> instance,
+		const MTP::Response &message) {
+	if (!UpdateHooks || message.reply.isEmpty()) {
+		return std::nullopt;
+	}
+	const auto account = AccountIndex(instance);
+	if (!account) {
+		return std::nullopt;
+	}
+	const auto result = Call(u"updates"_q, {
+		{ u"account"_q, *account },
+		{ u"data"_q, EncodeBuffer(
+			message.reply.constData(),
+			message.reply.size()) },
+	}).toObject();
+	if (result[u"drop"_q].toBool()) {
+		return mtpBuffer();
+	}
+	auto reply = DecodeBuffer(result[u"data"_q]);
+	return reply.isEmpty() ? std::nullopt : std::make_optional(reply);
 }
 
 } // namespace AyuPlugins

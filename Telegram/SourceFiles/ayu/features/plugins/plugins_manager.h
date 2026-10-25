@@ -16,6 +16,14 @@ namespace Main {
 class Session;
 } // namespace Main
 
+namespace MTP {
+class Instance;
+struct Response;
+namespace details {
+class SerializedRequest;
+} // namespace details
+} // namespace MTP
+
 namespace Ui {
 class PopupMenu;
 } // namespace Ui
@@ -57,5 +65,19 @@ void onMessageCreated(not_null<HistoryItem*> item);
 void fillMessageMenu(
 	not_null<Ui::PopupMenu*> menu,
 	not_null<HistoryItem*> item);
+
+// Returns false when a plugin cancelled the request.
+[[nodiscard]] bool onRequest(
+	not_null<MTP::Instance*> instance,
+	mtpRequestId requestId,
+	MTP::details::SerializedRequest &request);
+[[nodiscard]] std::optional<mtpBuffer> onResponse(
+	not_null<MTP::Instance*> instance,
+	const MTP::Response &response);
+
+// An empty buffer means the updates were dropped.
+[[nodiscard]] std::optional<mtpBuffer> onUpdates(
+	not_null<MTP::Instance*> instance,
+	const MTP::Response &message);
 
 } // namespace AyuPlugins

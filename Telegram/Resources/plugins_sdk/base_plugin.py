@@ -350,9 +350,7 @@ class BasePlugin:
         self._ayu_send_hooks.clear()
 
     def add_hook(self, name: str, match_substring: bool = False, priority: int = 0):
-        # shortcut: request/update hooks are accepted but never fire yet; wire them in MTP::Instance when a plugin needs them.
-        self._ayu_request_hooks[name] = priority
-        self.logger.warning("add_hook(%s) is not supported on desktop yet", name)
+        self._ayu_request_hooks[name] = (priority, match_substring)
 
     def remove_hook(self, name: str):
         self._ayu_request_hooks.pop(name, None)

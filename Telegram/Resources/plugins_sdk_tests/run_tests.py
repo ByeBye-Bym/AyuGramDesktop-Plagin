@@ -11,6 +11,7 @@ fixtures = os.path.join(here, "fixtures")
 runs = [
     ["test_sdk.py", sdk],
     ["check_plugin.py", sdk, os.path.join(fixtures, "test_plugin.plugin")],
+    ["test_hooks.py", sdk, os.path.join(here, "..", "..", "SourceFiles", "mtproto", "scheme", "api.tl")],
     ["test_lme.py", sdk, os.path.join(fixtures, "local_message_editor.plugin")],
 ]
 failed = 0

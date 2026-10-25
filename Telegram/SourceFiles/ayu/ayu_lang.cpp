@@ -24,6 +24,24 @@ std::map<QString, QString> langMapping = {
 	{"zh-hant-raw", "zh-hant"},
 };
 
+const std::map<QByteArray, QString> pluginStringsRu = {
+	{"ayu_CategoryPlugins", "Плагины"},
+	{"ayu_PluginsInstall", "Установить плагин"},
+	{"ayu_PluginsInstallTitle", "Выберите файл плагина"},
+	{"ayu_PluginsOpenFolder", "Открыть папку плагинов"},
+	{"ayu_PluginsEmpty", "Плагины пока не установлены. Откройте файл .plugin в любом чате или установите его из файла."},
+	{"ayu_PluginsRuntimeMissing", "Рядом с программой не найдена среда Python, плагины отключены."},
+	{"ayu_PluginsDescription", "Плагины в формате exteraGram. Поддерживаются только плагины, которые работают с текстом и данными сообщений."},
+	{"ayu_PluginSettings", "Настройки плагина"},
+	{"ayu_PluginDelete", "Удалить плагин"},
+	{"ayu_PluginDeleteConfirm", "Удалить плагин {name}?"},
+	{"ayu_PluginInstallButton", "Установить"},
+	{"ayu_PluginInstalled", "Плагин установлен"},
+	{"ayu_PluginInstallFailed", "Не удалось загрузить плагин: {error}"},
+	{"ayu_PluginLoadError", "Ошибка: {error}"},
+	{"ayu_PluginNoSettings", "У этого плагина нет настроек."},
+};
+
 constexpr auto postfixes = {
 	"zero",
 	"one",
@@ -208,6 +226,14 @@ void AyuLanguage::applyLanguageJson(QJsonDocument doc) {
 
 		Lang::GetInstance().resetValue(key.toUtf8());
 		Lang::GetInstance().applyValue(key.toUtf8(), val.toUtf8());
+	}
+	if (_currentLangId.startsWith(u"ru"_q)
+		|| Lang::GetInstance().baseId().startsWith(u"ru"_q)
+		|| Lang::GetInstance().id().startsWith(u"ru"_q)) {
+		for (const auto &[key, value] : pluginStringsRu) {
+			Lang::GetInstance().resetValue(key);
+			Lang::GetInstance().applyValue(key, value.toUtf8());
+		}
 	}
 	Lang::GetInstance().updatePluralRules();
 }
