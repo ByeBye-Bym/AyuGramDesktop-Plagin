@@ -30,7 +30,8 @@ with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as z:
     z.write(exe, "Ayuplagin/Ayuplagin.exe")
     for name in ("LICENSE", "LEGAL"):
         z.write(os.path.join(root, name), "Ayuplagin/" + name)
-    for folder, dirs, files in os.walk(os.path.join(build, "python")):
+    walked = [os.walk(os.path.join(build, d)) for d in ("python", "modules")]
+    for folder, dirs, files in (entry for walk in walked for entry in walk):
         dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
         for name in files:
             if name.endswith((".pyc", ".pdb")):
