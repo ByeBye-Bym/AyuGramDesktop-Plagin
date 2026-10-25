@@ -1,0 +1,84 @@
+from android.text import InputType
+from android.widget import EditText, LinearLayout, Toast
+from base_plugin import BasePlugin, MenuItemData, MenuItemType, MethodHook
+from client_utils import get_last_fragment
+from hook_utils import find_class
+from java.util import Calendar
+from ui.alert import AlertDialogBuilder
+
+__id__ = "shim_example"
+__name__ = "Shim example"
+__description__ = "Test fixture: edits a message locally through Android-style APIs."
+__version__ = "1.0"
+
+
+class BindHook(MethodHook):
+    def __init__(self, plugin):
+        self.plugin = plugin
+
+    def before_hooked_method(self, param):
+        self.plugin.reapply(param.args[0])
+
+
+class ShimExample(BasePlugin):
+    def on_plugin_load(self):
+        self.edits = {}
+        self.originals = {}
+        self.add_menu_item(MenuItemData(
+            menu_type=MenuItemType.MESSAGE_CONTEXT_MENU, text="Edit", on_click=self.edit))
+        self.add_menu_item(MenuItemData(
+            menu_type=MenuItemType.MESSAGE_CONTEXT_MENU, text="Restore", on_click=self.restore))
+        self.hook_all_methods(
+            find_class("org.telegram.ui.Cells.ChatMessageCell"), "setMessageObject", BindHook(self))
+
+    @staticmethod
+    def key(message):
+        return (message.getDialogId(), message.getId())
+
+    def reapply(self, message):
+        edit = self.edits.get(self.key(message))
+        if edit:
+            message.messageOwner.message, message.messageOwner.date = edit
+
+    def edit(self, context):
+        message = context["message"]
+        activity = get_last_fragment().getParentActivity()
+        cal = Calendar.getInstance()
+        cal.setTimeInMillis(message.messageOwner.date * 1000)
+        layout = LinearLayout(activity)
+        layout.setOrientation(LinearLayout.VERTICAL)
+        text = EditText(activity)
+        text.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE)
+        text.setText(message.messageOwner.message)
+        layout.addView(text)
+        time = EditText(activity)
+        time.setText("%02d:%02d" % (cal.get(Calendar.HOUR_OF_DAY), cal.get(Calendar.MINUTE)))
+        layout.addView(time)
+
+        def save(builder, which):
+            try:
+                hour, minute = (int(x) for x in time.getText().toString().split(":"))
+                cal.set(Calendar.HOUR_OF_DAY, hour)
+                cal.set(Calendar.MINUTE, minute)
+            except ValueError:
+                Toast.makeText(activity, "Bad time", Toast.LENGTH_SHORT).show()
+                return
+            self.originals.setdefault(self.key(message), (message.messageOwner.message, message.messageOwner.date))
+            edit = (text.getText().toString(), cal.getTimeInMillis() // 1000)
+            self.edits[self.key(message)] = edit
+            message.messageOwner.message, message.messageOwner.date = edit
+            builder.dismiss()
+
+        builder = AlertDialogBuilder(activity)
+        builder.set_title("Edit")
+        builder.set_view(layout)
+        builder.set_positive_button("Save", save)
+        builder.set_negative_button("Cancel")
+        builder.show()
+
+    def restore(self, context):
+        message = context["message"]
+        self.edits.pop(self.key(message), None)
+        original = self.originals.pop(self.key(message), None)
+        if original:
+            message.messageOwner.message, message.messageOwner.date = original
