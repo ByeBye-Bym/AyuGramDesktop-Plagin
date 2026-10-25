@@ -77,6 +77,47 @@ Ayuplagin тянет плагины, которые работают **с тек
 
 Если плагин просит то, чего тут нет, он всё равно загрузится, просто эта его часть не сработает. В журнале ошибок при этом появится предупреждение.
 
+### Перенести плагин с помощью ИИ
+
+Если плагин не работает, его часто можно переделать под Ayuplagin с помощью ИИ: Claude, ChatGPT и т. п.
+Скопируйте промт ниже (на GitHub справа от блока есть кнопка копирования), вставьте в чат, а в самый конец добавьте код плагина или приложите файл `.plugin`.
+Если плагин всё равно падает, отправьте ИИ текст из журнала ошибок и попросите исправить.
+
+```text
+Ты помогаешь перенести плагин exteraGram (Telegram для Android) в Ayuplagin.
+Ayuplagin - это Telegram-клиент для Windows на основе AyuGram Desktop. Он запускает плагины exteraGram во встроенном Python 3.11, но вместо Android и Java там только заглушки. Перепиши плагин так, чтобы он работал в Ayuplagin.
+
+Что есть в Ayuplagin:
+- base_plugin: BasePlugin (on_plugin_load, on_plugin_unload, on_app_event, create_settings, get_setting, set_setting, log, self.logger), HookResult, HookStrategy (DEFAULT, CANCEL, MODIFY, MODIFY_FINAL), MenuItemData, MenuItemType, MethodHook.
+- add_on_send_message_hook + on_send_message_hook(account, params). У params есть только message, peer, replyToMsgId. Менять можно только текст, форматирование при изменении пропадает.
+- add_hook(name, match_substring=False, priority=0) + pre_request_hook, post_request_hook, on_update_hook, on_updates_hook. Запросы и обновления приходят как Python-объекты по схеме Telegram API: имя класса вида TL_messages_sendMessage, поля называются как в api.tl (message, peer, random_id и т. д.), флаги считаются сами. Объект можно менять на месте и вернуть HookResult(strategy=HookStrategy.MODIFY, request=...). Ошибка в post_request_hook приходит как объект с полями code и text.
+- add_menu_item: работает только MenuItemType.MESSAGE_CONTEXT_MENU. В on_click приходит словарь context с ключами account, dialog_id и message.
+- MessageObject: getId(), getDialogId(), isOut(), getSenderId(), messageOwner.message, messageOwner.date, messageOwner.id, messageOwner.out.
+- ui.settings: Header, Divider, Switch, Selector, Input, EditText, Text (с on_click, red, accent). Custom не поддерживается.
+- ui.alert.AlertDialogBuilder: set_title, set_message, set_view, set_positive_button, set_negative_button, set_neutral_button, show, dismiss. В set_view понимаются только LinearLayout, TextView и EditText из android.widget.
+- ui.bulletin.BulletinHelper: show_info, show_error, show_success (показывается как всплывающее уведомление).
+- android.widget: EditText, TextView, LinearLayout, Toast. android.text.InputType. java.util.Calendar.
+- client_utils: send_text(peer_id, text, replyToMsg=None), send_message({"peer", "message"}), edit_message_local(message_obj, text) (меняет текст только на этом компьютере), get_message(peer_id, msg_id), run_on_queue(fn), get_last_fragment().
+- android_utils: log, run_on_ui_thread, copy_to_clipboard.
+- file_utils: get_plugins_dir, get_cache_dir, get_files_dir, ensure_dir_exists, read_file, write_file, list_dir, delete_file.
+- hook_utils.find_class + hook_all_methods работают только для "org.telegram.ui.Cells.ChatMessageCell" и метода "setMessageObject": хук вызывается, когда сообщение появляется в чате, param.args[0] - MessageObject.
+
+Чего в Ayuplagin нет:
+- Любых других классов Android и Java, jnius/Chaquopy, org.telegram.* (кроме перехвата выше), TLRPC из Java, свои экраны и View.
+- Отправки своих запросов к API: send_request и похожего нет. Отправить можно только текст через send_text или send_message.
+- Меню, кроме контекстного меню сообщения.
+- Медиа, стикеров, файлов в сообщениях: работа идёт только с текстом и данными.
+
+Правила:
+1. Сохрани метаданные (__id__, __name__, __description__, __author__, __version__, __min_version__ и т. п.) и главную идею плагина.
+2. Всё, что использует недоступное, замени на то, что есть в списке выше. Если замены нет, убери эту часть, а не оставляй вызов, который упадёт.
+3. Не выдумывай функции, которых нет в списке.
+4. Оберни рискованные места в try/except и пиши ошибки через self.logger.exception, чтобы они попадали в журнал ошибок Ayuplagin.
+5. Ответ: сначала коротко по-русски, что поменял и что пришлось убрать. Потом весь файл .plugin целиком одним блоком кода, готовый для сохранения.
+
+Вот плагин:
+```
+
 ### Что хочется сделать дальше
 
 Это планы, а не обещания: что получится и когда, пока не знаю.
